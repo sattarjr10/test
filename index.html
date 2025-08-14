@@ -40,12 +40,9 @@
 </div>
 
 <script>
-const SOURCES = [
-  'https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/All_Configs_Sub.txt',
-  'https://github.com/Epodonios/v2ray-configs/raw/main/All_Configs_Sub.txt',
-  'https://cdn.jsdelivr.net/gh/Epodonios/v2ray-configs@main/All_Configs_Sub.txt'
-];
-let lastSource = '';
+const RAW_URL = 'https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/All_Configs_Sub.txt';
+const PROXY_API = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(RAW_URL);
+
 const configList = document.getElementById('configList');
 const statusEl = document.getElementById('status');
 const searchBox = document.getElementById('searchBox');
@@ -56,12 +53,12 @@ let configs = [];
 async function fetchConfigs() {
   statusEl.textContent = 'در حال بروزرسانی کانفیگ‌ها...';
   try {
-    const text = await fetchWithFallback(SOURCES);
-    configs = text.split(/
-?
-/).map(s => s.trim()).filter(line => /^(vmess|vless|trojan|ss):\/\//i.test(line));
+    const res = await fetch(PROXY_API, { cache: 'no-store' });
+    if (!res.ok) throw new Error('خطا در دریافت داده');
+    const text = await res.text();
+    configs = text.split(/\r?\n/).map(s => s.trim()).filter(line => /^(vmess|vless|trojan|ss):\/\//i.test(line));
     renderConfigs();
-    statusEl.textContent = `تعداد کانفیگ‌ها: ${configs.length} — منبع: ${lastSource}`;
+    statusEl.textContent = `تعداد کانفیگ‌ها: ${configs.length}`;
   } catch (err) {
     statusEl.textContent = 'خطا در بارگذاری کانفیگ‌ها';
     console.error(err);
@@ -102,27 +99,7 @@ document.getElementById('refreshBtn').addEventListener('click', fetchConfigs);
 searchBox.addEventListener('input', renderConfigs);
 protocolFilter.addEventListener('change', renderConfigs);
 
-fetchConfigs(); // Load on start
-function pickValidSource(text){
-  return /^(vmess|vless|trojan|ss):\/\//im.test(text);
-}
-async function fetchWithFallback(urls){
-  let lastError = null;
-  for (const url of urls){
-    try{
-      const res = await fetch(url, { cache:'no-store', referrerPolicy:'no-referrer', headers:{'Accept':'text/plain'} });
-      if(!res.ok) throw new Error('HTTP '+res.status+' @ '+url);
-      const txt = await res.text();
-      if(!pickValidSource(txt)) throw new Error('No configs found in response');
-      lastSource = url;
-      return txt;
-    }catch(e){
-      console.warn('Source failed:', url, e);
-      lastError = e;
-    }
-  }
-  throw lastError || new Error('All sources failed');
-}
+fetchConfigs();
 </script>
 </body>
 </html>
