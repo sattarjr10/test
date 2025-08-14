@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>لیست کانفیگ V2Ray (به‌روز خودکار)</title>
+<style>
+  body { font-family: Tahoma, sans-serif; background: #0a1126; color: #e2e8f0; margin: 0; padding: 20px; }
+  .container { max-width: 1200px; margin: auto; }
+  h1 { text-align: center; margin-bottom: 20px; color: #3b82f6; }
+  .controls { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-bottom: 20px; }
+  select, input, button { padding: 10px; border-radius: 8px; border: none; }
+  button { background: #3b82f6; color: #fff; cursor: pointer; }
+  button:hover { background: #2563eb; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px; }
+  .card { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 15px; word-break: break-all; }
+  .protocol { font-weight: bold; color: #06b6d4; }
+  .copy-btn { background: #06b6d4; color: white; padding: 6px 10px; border-radius: 6px; cursor: pointer; margin-top: 10px; display: inline-block; }
+  .copy-btn:hover { background: #0891b2; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>لیست کانفیگ‌های V2Ray (آپدیت خودکار)</h1>
+
+  <div class="controls">
+    <select id="protocolFilter">
+      <option value="all">همه پروتکل‌ها</option>
+      <option value="vmess">VMess</option>
+      <option value="vless">VLess</option>
+      <option value="trojan">Trojan</option>
+      <option value="ss">Shadowsocks</option>
+    </select>
+    <input type="text" id="searchBox" placeholder="جستجو (نام یا کشور)">
+    <button id="refreshBtn">بروزرسانی</button>
+  </div>
+
+  <div id="status" style="text-align:center; margin-bottom:10px;">در حال بارگذاری...</div>
+  <div id="configList" class="grid"></div>
+</div>
+
+<script>
+const SOURCES = [
+  'https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/All_Configs_Sub.txt',
+  'https://github.com/Epodonios/v2ray-configs/raw/main/All_Configs_Sub.txt',
+  'https://cdn.jsdelivr.net/gh/Epodonios/v2ray-configs@main/All_Configs_Sub.txt'
+];
+let lastSource = '';
+const configList = document.getElementById('configList');
+const statusEl = document.getElementById('status');
+const searchBox = document.getElementById('searchBox');
+const protocolFilter = document.getElementById('protocolFilter');
+
+let configs = [];
+
+async function fetchConfigs() {
+  statusEl.textContent = 'در حال بروزرسانی کانفیگ‌ها...';
+  try {
+    const text = await fetchWithFallback(SOURCES);
+    configs = text.split(/
+?
+/).map(s => s.trim()).filter(line => /^(vmess|vless|trojan|ss):\/\//i.test(line));
+    renderConfigs();
+    statusEl.textContent = `تعداد کانفیگ‌ها: ${configs.length} — منبع: ${lastSource}`;
+  } catch (err) {
+    statusEl.textContent = 'خطا در بارگذاری کانفیگ‌ها';
+    console.error(err);
+  }
+}
+
+function renderConfigs() {
+  const searchValue = searchBox.value.toLowerCase();
+  const protocol = protocolFilter.value;
+  configList.innerHTML = '';
+
+  const filtered = configs.filter(cfg => {
+    const matchesProtocol = protocol === 'all' || cfg.startsWith(protocol + '://');
+    const matchesSearch = searchValue === '' || cfg.toLowerCase().includes(searchValue);
+    return matchesProtocol && matchesSearch;
+  });
+
+  filtered.forEach(cfg => {
+    const protocolName = cfg.split('://')[0];
+    const div = document.createElement('div');
+    div.className = 'card';
+    div.innerHTML = `
+      <div class="protocol">${protocolName.toUpperCase()}</div>
+      <div class="config-text">${cfg}</div>
+      <div class="copy-btn" onclick="copyToClipboard('${cfg}')">کپی</div>
+    `;
+    configList.appendChild(div);
+  });
+}
+
+function copyToClipboard(text) {
+  navigator.clipboard.writeText(text).then(() => {
+    alert('کپی شد!');
+  });
+}
+
+document.getElementById('refreshBtn').addEventListener('click', fetchConfigs);
+searchBox.addEventListener('input', renderConfigs);
+protocolFilter.addEventListener('change', renderConfigs);
+
+fetchConfigs(); // Load on start
+function pickValidSource(text){
+  return /^(vmess|vless|trojan|ss):\/\//im.test(text);
+}
+async function fetchWithFallback(urls){
+  let lastError = null;
+  for (const url of urls){
+    try{
+      const res = await fetch(url, { cache:'no-store', referrerPolicy:'no-referrer', headers:{'Accept':'text/plain'} });
+      if(!res.ok) throw new Error('HTTP '+res.status+' @ '+url);
+      const txt = await res.text();
+      if(!pickValidSource(txt)) throw new Error('No configs found in response');
+      lastSource = url;
+      return txt;
+    }catch(e){
+      console.warn('Source failed:', url, e);
+      lastError = e;
+    }
+  }
+  throw lastError || new Error('All sources failed');
+}
+</script>
+</body>
+</html>
