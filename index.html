@@ -1,105 +1,117 @@
-<!DOCTYPE html>
-<html lang="fa" dir="rtl">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>لیست کانفیگ V2Ray (به‌روز خودکار)</title>
-<style>
-  body { font-family: Tahoma, sans-serif; background: #0a1126; color: #e2e8f0; margin: 0; padding: 20px; }
-  .container { max-width: 1200px; margin: auto; }
-  h1 { text-align: center; margin-bottom: 20px; color: #3b82f6; }
-  .controls { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-bottom: 20px; }
-  select, input, button { padding: 10px; border-radius: 8px; border: none; }
-  button { background: #3b82f6; color: #fff; cursor: pointer; }
-  button:hover { background: #2563eb; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px; }
-  .card { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 15px; word-break: break-all; }
-  .protocol { font-weight: bold; color: #06b6d4; }
-  .copy-btn { background: #06b6d4; color: white; padding: 6px 10px; border-radius: 6px; cursor: pointer; margin-top: 10px; display: inline-block; }
-  .copy-btn:hover { background: #0891b2; }
-</style>
-</head>
-<body>
-<div class="container">
-  <h1>لیست کانفیگ‌های V2Ray (آپدیت خودکار)</h1>
-
-  <div class="controls">
-    <select id="protocolFilter">
-      <option value="all">همه پروتکل‌ها</option>
-      <option value="vmess">VMess</option>
-      <option value="vless">VLess</option>
-      <option value="trojan">Trojan</option>
-      <option value="ss">Shadowsocks</option>
-    </select>
-    <input type="text" id="searchBox" placeholder="جستجو (نام یا کشور)">
-    <button id="refreshBtn">بروزرسانی</button>
-  </div>
-
-  <div id="status" style="text-align:center; margin-bottom:10px;">در حال بارگذاری...</div>
-  <div id="configList" class="grid"></div>
-</div>
-
-<script>
-const RAW_URL = 'https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/All_Configs_Sub.txt';
-const PROXY_API = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(RAW_URL);
-
-const configList = document.getElementById('configList');
-const statusEl = document.getElementById('status');
-const searchBox = document.getElementById('searchBox');
-const protocolFilter = document.getElementById('protocolFilter');
-
-let configs = [];
-
-async function fetchConfigs() {
-  statusEl.textContent = 'در حال بروزرسانی کانفیگ‌ها...';
-  try {
-    const res = await fetch(PROXY_API, { cache: 'no-store' });
-    if (!res.ok) throw new Error('خطا در دریافت داده');
-    const text = await res.text();
-    configs = text.split(/\r?\n/).map(s => s.trim()).filter(line => /^(vmess|vless|trojan|ss):\/\//i.test(line));
-    renderConfigs();
-    statusEl.textContent = `تعداد کانفیگ‌ها: ${configs.length}`;
-  } catch (err) {
-    statusEl.textContent = 'خطا در بارگذاری کانفیگ‌ها';
-    console.error(err);
-  }
+// تابع جدید برای دریافت و پردازش کانفیگ‌های V2Ray
+async function fetchRealV2RayConfigs() {
+    try {
+        // استفاده از CORS proxy برای دور زدن محدودیت‌های گیتهاب
+        const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
+        const targetUrl = 'https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/All_Configs_Sub.txt';
+        
+        showNotification(language === 'fa' ? 'در حال دریافت کانفیگ‌ها...' : 'Fetching configs...');
+        
+        const response = await fetch(proxyUrl + targetUrl, {
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error(language === 'fa' ? 'خطا در دریافت فایل از گیتهاب' : 'Failed to fetch from GitHub');
+        }
+        
+        const text = await response.text();
+        v2rayConfigs = parseV2RayConfigs(text);
+        
+        if (v2rayConfigs.length === 0) {
+            throw new Error(language === 'fa' ? 'هیچ کانفیگی یافت نشد' : 'No configs found');
+        }
+        
+        renderV2RayConfigs();
+        showNotification(language === 'fa' ? 
+            `${v2rayConfigs.length} کانفیگ با موفقیت لود شد` : 
+            `${v2rayConfigs.length} configs loaded successfully`);
+            
+    } catch (error) {
+        console.error('Error fetching V2Ray configs:', error);
+        showNotification(language === 'fa' ? 
+            'خطا در دریافت کانفیگ‌ها. لطفا از VPN استفاده کنید.' : 
+            'Error fetching configs. Please use VPN.');
+        
+        // استفاده از داده‌های نمونه به عنوان جایگزین
+        v2rayConfigs = sampleV2RayConfigs;
+        renderV2RayConfigs();
+    }
 }
 
-function renderConfigs() {
-  const searchValue = searchBox.value.toLowerCase();
-  const protocol = protocolFilter.value;
-  configList.innerHTML = '';
-
-  const filtered = configs.filter(cfg => {
-    const matchesProtocol = protocol === 'all' || cfg.startsWith(protocol + '://');
-    const matchesSearch = searchValue === '' || cfg.toLowerCase().includes(searchValue);
-    return matchesProtocol && matchesSearch;
-  });
-
-  filtered.forEach(cfg => {
-    const protocolName = cfg.split('://')[0];
-    const div = document.createElement('div');
-    div.className = 'card';
-    div.innerHTML = `
-      <div class="protocol">${protocolName.toUpperCase()}</div>
-      <div class="config-text">${cfg}</div>
-      <div class="copy-btn" onclick="copyToClipboard('${cfg}')">کپی</div>
-    `;
-    configList.appendChild(div);
-  });
+// تابع پردازش فایل متنی و استخراج کانفیگ‌ها
+function parseV2RayConfigs(text) {
+    const configs = [];
+    const lines = text.split('\n');
+    
+    // الگوهای مختلف برای شناسایی کانفیگ‌ها
+    const patterns = {
+        vmess: /^vmess:\/\//,
+        vless: /^vless:\/\//,
+        trojan: /^trojan:\/\//
+    };
+    
+    let currentConfig = null;
+    
+    lines.forEach(line => {
+        line = line.trim();
+        
+        // شناسایی شروع یک کانفیگ جدید
+        if (patterns.vmess.test(line) || patterns.vless.test(line) || patterns.trojan.test(line)) {
+            if (currentConfig) {
+                configs.push(currentConfig);
+            }
+            
+            currentConfig = {
+                link: line,
+                protocol: line.split('://')[0],
+                country: 'Unknown',
+                ping: Math.floor(Math.random() * 200) + 50, // مقدار تصادفی برای نمونه
+                speed: Math.floor(Math.random() * 80) + 20   // مقدار تصادفی برای نمونه
+            };
+        }
+        // پردازش اطلاعات اضافی کانفیگ
+        else if (currentConfig && line.includes(':')) {
+            const [key, value] = line.split(':').map(item => item.trim());
+            
+            if (key === 'country') {
+                currentConfig.country = value;
+            }
+            else if (key === 'provider') {
+                currentConfig.provider = value;
+            }
+        }
+    });
+    
+    // اضافه کردن آخرین کانفیگ
+    if (currentConfig) {
+        configs.push(currentConfig);
+    }
+    
+    return configs;
 }
 
-function copyToClipboard(text) {
-  navigator.clipboard.writeText(text).then(() => {
-    alert('کپی شد!');
-  });
+// تغییر در تابع switchTab برای استفاده از تابع جدید
+function switchTab(tab) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    event.target.classList.add('active');
+    
+    if (tab === 'telegram') {
+        document.getElementById('telegramFilters').style.display = 'flex';
+        document.getElementById('v2rayFilters').style.display = 'none';
+        document.getElementById('proxyList').style.display = 'grid';
+        document.getElementById('v2rayList').style.display = 'none';
+    } else {
+        document.getElementById('telegramFilters').style.display = 'none';
+        document.getElementById('v2rayFilters').style.display = 'flex';
+        document.getElementById('proxyList').style.display = 'none';
+        document.getElementById('v2rayList').style.display = 'grid';
+        
+        // استفاده از تابع جدید برای دریافت کانفیگ‌ها
+        if (v2rayConfigs.length === 0) {
+            fetchRealV2RayConfigs();
+        }
+    }
 }
-
-document.getElementById('refreshBtn').addEventListener('click', fetchConfigs);
-searchBox.addEventListener('input', renderConfigs);
-protocolFilter.addEventListener('change', renderConfigs);
-
-fetchConfigs();
-</script>
-</body>
-</html>
