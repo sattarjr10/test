@@ -1,117 +1,187 @@
-// تابع جدید برای دریافت و پردازش کانفیگ‌های V2Ray
-async function fetchRealV2RayConfigs() {
-    try {
-        // استفاده از CORS proxy برای دور زدن محدودیت‌های گیتهاب
-        const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
-        const targetUrl = 'https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/All_Configs_Sub.txt';
-        
-        showNotification(language === 'fa' ? 'در حال دریافت کانفیگ‌ها...' : 'Fetching configs...');
-        
-        const response = await fetch(proxyUrl + targetUrl, {
-            headers: {
-                'X-Requested-With': 'XMLHttpRequest'
-            }
-        });
-        
-        if (!response.ok) {
-            throw new Error(language === 'fa' ? 'خطا در دریافت فایل از گیتهاب' : 'Failed to fetch from GitHub');
-        }
-        
-        const text = await response.text();
-        v2rayConfigs = parseV2RayConfigs(text);
-        
-        if (v2rayConfigs.length === 0) {
-            throw new Error(language === 'fa' ? 'هیچ کانفیگی یافت نشد' : 'No configs found');
-        }
-        
-        renderV2RayConfigs();
-        showNotification(language === 'fa' ? 
-            `${v2rayConfigs.length} کانفیگ با موفقیت لود شد` : 
-            `${v2rayConfigs.length} configs loaded successfully`);
-            
-    } catch (error) {
-        console.error('Error fetching V2Ray configs:', error);
-        showNotification(language === 'fa' ? 
-            'خطا در دریافت کانفیگ‌ها. لطفا از VPN استفاده کنید.' : 
-            'Error fetching configs. Please use VPN.');
-        
-        // استفاده از داده‌های نمونه به عنوان جایگزین
-        v2rayConfigs = sampleV2RayConfigs;
-        renderV2RayConfigs();
-    }
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenNet98 - پنل کانفیگ‌ها</title>
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+:root{
+  --bg:#f5f5f5;
+  --text:#333;
+  --primary:#4a90e2;
+  --secondary:#357ab7;
+  --card-bg:#fff;
+}
+[data-theme="dark"]{
+  --bg:#121212;
+  --text:#ddd;
+  --card-bg:#1e1e1e;
+  --primary:#4a90e2;
+  --secondary:#357ab7;
+}
+*{box-sizing:border-box;transition:0.3s;}
+body{margin:0;padding:0;font-family:'Vazirmatn',sans-serif;background:var(--bg);color:var(--text);}
+header{
+  position:fixed;top:0;left:0;width:100%;height:90px;
+  background:linear-gradient(90deg,#4a90e2,#357ab7);
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 30px;color:white;box-shadow:0 6px 15px rgba(0,0,0,0.3);z-index:100;
+  font-size:28px;font-weight:700;
+}
+.theme-toggle{background:white;color:var(--primary);border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-weight:600;}
+.container{max-width:1000px;margin:120px auto 80px;padding:0 15px;}
+.controls{display:flex;justify-content:space-between;flex-wrap:wrap;margin-bottom:20px;gap:10px;}
+select,input{padding:8px 12px;border-radius:8px;border:1px solid #ccc;font-size:14px;}
+select:focus,input:focus{outline:none;border-color:var(--primary);}
+.config-item{
+  background:linear-gradient(135deg,#ffffff,#e6f0ff);
+  margin-bottom:20px;padding:20px;border-radius:20px;
+  box-shadow:0 10px 25px rgba(0,0,0,0.15);
+  display:flex;justify-content:space-between;flex-wrap:wrap;
+  opacity:0;transform:translateY(30px) scale(0.95);
+  animation:fadeScale 0.7s forwards;
+}
+@keyframes fadeScale{to{opacity:1;transform:translateY(0) scale(1);}}
+.config-item:hover{transform:scale(1.02);box-shadow:0 15px 35px rgba(0,0,0,0.25);}
+.config-info{max-width:70%;word-break:break-word;}
+.config-name{font-weight:700;font-size:18px;margin-bottom:8px;}
+.config-details{font-size:14px;color:#666;}
+[data-theme="dark"] .config-details{color:#aaa;}
+.buttons{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;}
+button.copy-btn{background:var(--primary);color:white;border:none;padding:8px 15px;border-radius:8px;cursor:pointer;font-weight:600;}
+button.copy-btn:hover{background:var(--secondary);}
+.status{margin-top:5px;font-size:12px;color:#555;}
+[data-theme="dark"] .status{color:#aaa;}
+footer{
+  background:linear-gradient(90deg,#4a90e2,#357ab7);
+  color:white;padding:40px 20px;text-align:center;border-top:5px solid #1a6fb3;
+}
+footer a{margin:0 15px;color:white;font-size:18px;}
+footer .social-icons a{font-size:28px;margin:0 10px;}
+.load-more{text-align:center;margin:25px 0;}
+.load-more button{padding:12px 25px;font-size:16px;border:none;border-radius:10px;cursor:pointer;background:var(--primary);color:white;font-weight:600;}
+.load-more button:hover{background:var(--secondary);}
+@media(max-width:700px){.config-info{max-width:100%;}.buttons{width:100%;justify-content:flex-start;}}
+</style>
+</head>
+<body data-theme="light">
+
+<header>
+  OpenNet98
+  <button class="theme-toggle" onclick="toggleTheme()"><i class="fas fa-adjust"></i> تغییر تم</button>
+</header>
+
+<div class="container">
+  <div class="controls">
+    <select id="filterProtocol" onchange="applyFilters()">
+      <option value="all">نمایش همه پروتکل‌ها</option>
+      <option value="Vmess">Vmess</option>
+      <option value="Vless">Vless</option>
+      <option value="Trojan">Trojan</option>
+    </select>
+    <input type="text" id="searchInput" placeholder="جستجو در کانفیگ‌ها..." oninput="applyFilters()">
+  </div>
+  <div id="configList"></div>
+  <div class="load-more" id="loadMoreContainer"><button onclick="loadNextBatch()">نمایش بیشتر</button></div>
+</div>
+
+<footer>
+  <p>کانال یوتیوب: <a href="https://www.youtube.com/@OpenNet98" target="_blank">OpenNet98</a> | تلگرام: <a href="https://t.me/OpenNet98" target="_blank">@OpenNet98</a></p>
+  <div class="social-icons">
+    <a href="https://www.youtube.com/@OpenNet98" target="_blank"><i class="fab fa-youtube"></i></a>
+    <a href="https://t.me/OpenNet98" target="_blank"><i class="fab fa-telegram"></i></a>
+  </div>
+</footer>
+
+<script>
+const apiUrl='https://v2ray.info-cs16-ir.workers.dev/';
+let allConfigs=[],filteredConfigs=[],currentIndex=0,batchSize=15;
+
+function toggleTheme(){
+  document.body.setAttribute('data-theme',document.body.getAttribute('data-theme')==='light'?'dark':'light');
 }
 
-// تابع پردازش فایل متنی و استخراج کانفیگ‌ها
-function parseV2RayConfigs(text) {
-    const configs = [];
-    const lines = text.split('\n');
-    
-    // الگوهای مختلف برای شناسایی کانفیگ‌ها
-    const patterns = {
-        vmess: /^vmess:\/\//,
-        vless: /^vless:\/\//,
-        trojan: /^trojan:\/\//
-    };
-    
-    let currentConfig = null;
-    
-    lines.forEach(line => {
-        line = line.trim();
-        
-        // شناسایی شروع یک کانفیگ جدید
-        if (patterns.vmess.test(line) || patterns.vless.test(line) || patterns.trojan.test(line)) {
-            if (currentConfig) {
-                configs.push(currentConfig);
-            }
-            
-            currentConfig = {
-                link: line,
-                protocol: line.split('://')[0],
-                country: 'Unknown',
-                ping: Math.floor(Math.random() * 200) + 50, // مقدار تصادفی برای نمونه
-                speed: Math.floor(Math.random() * 80) + 20   // مقدار تصادفی برای نمونه
-            };
-        }
-        // پردازش اطلاعات اضافی کانفیگ
-        else if (currentConfig && line.includes(':')) {
-            const [key, value] = line.split(':').map(item => item.trim());
-            
-            if (key === 'country') {
-                currentConfig.country = value;
-            }
-            else if (key === 'provider') {
-                currentConfig.provider = value;
-            }
-        }
+function copyText(text){navigator.clipboard.writeText(text).then(()=>alert('کانفیگ کپی شد!'));}
+
+function parseProtocol(cfgText){
+  if(cfgText.toLowerCase().includes('vmess://')) return 'Vmess';
+  if(cfgText.toLowerCase().includes('vless://')) return 'Vless';
+  if(cfgText.toLowerCase().includes('trojan://')) return 'Trojan';
+  return 'Unknown';
+}
+
+async function loadConfigs(){
+  try{
+    const response=await fetch(apiUrl);
+    const text=await response.text();
+    const lines=text.split('\n').filter(l=>l.trim()!=='' && !l.toLowerCase().includes('endpoint'));
+    allConfigs=lines.map((cfg,index)=>{
+      return {
+        cfg,
+        protocol:parseProtocol(cfg),
+        ping:'نامشخص',
+        status:'نامشخص',
+        location:'نامشخص'
+      };
     });
-    
-    // اضافه کردن آخرین کانفیگ
-    if (currentConfig) {
-        configs.push(currentConfig);
-    }
-    
-    return configs;
+    filteredConfigs = [...allConfigs];
+    loadNextBatch(true);
+  }catch(e){
+    console.error(e);
+    document.getElementById('configList').innerHTML='<p>خطا در بارگذاری کانفیگ‌ها.</p>';
+  }
 }
 
-// تغییر در تابع switchTab برای استفاده از تابع جدید
-function switchTab(tab) {
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    event.target.classList.add('active');
-    
-    if (tab === 'telegram') {
-        document.getElementById('telegramFilters').style.display = 'flex';
-        document.getElementById('v2rayFilters').style.display = 'none';
-        document.getElementById('proxyList').style.display = 'grid';
-        document.getElementById('v2rayList').style.display = 'none';
-    } else {
-        document.getElementById('telegramFilters').style.display = 'none';
-        document.getElementById('v2rayFilters').style.display = 'flex';
-        document.getElementById('proxyList').style.display = 'none';
-        document.getElementById('v2rayList').style.display = 'grid';
-        
-        // استفاده از تابع جدید برای دریافت کانفیگ‌ها
-        if (v2rayConfigs.length === 0) {
-            fetchRealV2RayConfigs();
-        }
-    }
+function createCard(cfgObj,index){
+  const div=document.createElement('div');
+  div.className='config-item';
+  div.style.animationDelay=(index*0.05)+'s';
+  const infoDiv=document.createElement('div');
+  infoDiv.className='config-info';
+  infoDiv.innerHTML=`
+    <div class="config-name">کانفیگ ${index+1} | ${cfgObj.protocol}</div>
+    <div class="config-details">${cfgObj.cfg}</div>
+    <div class="status">لوکیشن: ${cfgObj.location} | پینگ: ${cfgObj.ping} | وضعیت: ${cfgObj.status}</div>
+  `;
+  const buttonsDiv=document.createElement('div');
+  buttonsDiv.className='buttons';
+  const copyBtn=document.createElement('button');
+  copyBtn.className='copy-btn';
+  copyBtn.innerText='کپی';
+  copyBtn.onclick=()=>copyText(cfgObj.cfg);
+  buttonsDiv.appendChild(copyBtn);
+  div.appendChild(infoDiv);
+  div.appendChild(buttonsDiv);
+  return div;
 }
+
+function loadNextBatch(reset=false){
+  const container=document.getElementById('configList');
+  if(reset){container.innerHTML='';currentIndex=0;}
+  const nextBatch=filteredConfigs.slice(currentIndex,currentIndex+batchSize);
+  nextBatch.forEach((cfg,index)=>{
+    const card=createCard(cfg,currentIndex+index+1);
+    container.appendChild(card);
+  });
+  currentIndex+=batchSize;
+  document.getElementById('loadMoreContainer').style.display = currentIndex>=filteredConfigs.length?'none':'block';
+}
+
+function applyFilters(){
+  const protocol = document.getElementById('filterProtocol').value;
+  const searchText = document.getElementById('searchInput').value.trim().toLowerCase();
+  filteredConfigs = allConfigs.filter(cfg=>{
+    const matchProtocol = (protocol==='all') || cfg.protocol===protocol;
+    const matchSearch = cfg.cfg.toLowerCase().includes(searchText);
+    return matchProtocol && matchSearch;
+  });
+  loadNextBatch(true);
+}
+
+loadConfigs();
+</script>
+
+</body>
+</html>
